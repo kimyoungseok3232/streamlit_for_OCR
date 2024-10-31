@@ -160,6 +160,37 @@ def csv_to_json(file_name):
         data = json.loads(f.read())
     return json_to_csv(reorganize_data(data))
 
+def check_same_csv(name, csv):
+    i = 1
+    while name in csv:
+        if i == 1:
+            name = name[:-4]+'_'+str(i)+'.csv'
+        else:
+            name = name[:-6]+'_'+str(i)+'.csv'
+        i += 1
+    return name
+
+@st.dialog("csv upload")
+def upload_csv(csv):
+    uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+    # 파일이 업로드되면 처리
+    if uploaded_file is not None:
+        data = json.load(uploaded_file)
+
+        try:
+            json_to_csv(reorganize_data(data))
+            input_name = st.text_input("csv 파일 이름 지정", value=uploaded_file.name.replace('.csv', ''))
+
+            if st.button("upload_csv"):
+                name = check_same_csv(input_name+'.csv',csv)
+                st.write("saved file name: "+name)
+                with open(f'./output/{name}','w') as f:
+                    json.dump(data, f, indent=4)
+        except:
+            st.error("비정상적인 파일 입니다.")
+        if st.button("close"):
+                st.rerun()
+
 def main():
     if st.sidebar.button("새로고침"):
         st.rerun()
@@ -190,6 +221,9 @@ def main():
             data = testd
             if choose_csv != "안함":
                 data = csv_to_json(choose_csv)
+            if st.sidebar.button("새로운 csv 파일 업로드"):
+                upload_csv(csv)
+
             show_dataframe(data[choose_lang]['images'],data[choose_lang]['annotations'],st,choose_lang, choose_data)
 
 def login(password, auth):
