@@ -9,9 +9,8 @@ import streamlit as st
 
 st.set_page_config(page_title="데이터 분석 및 개별 이미지 확인용", layout="wide")
 
-global language
 language = ['chinese', 'japanese', 'thai', 'vietnamese']
-
+checker = ['.zh.', '.ja.', '.th.', '.vi.']
 
 # json 파일에서 각 key 별로 데이터 불러와서 dataframe으로 변환 후 리스트에 넣고 리스트 반환
 # 입력 - json 파일
@@ -67,24 +66,18 @@ def split_frame(input_df, rows):
 ## window = 데이터 출력할 창
 def get_image(lang, image_path, anno, transform, type):
     img = cv2.imread(f'../data/{lang}_receipt/img/{type}/'+image_path)
-    tlist = [0 for _ in range(10)]
-    tset = set()
-    iters = anno[['points']].values
-
-    for [annotation] in iters:
-        cv2.polylines(img, [np.array(annotation, dtype=np.int32)],True, (255,0,0), 3)
-
-
-    return img, tlist, tset
+    if st.session_state['show_anno']:
+        iters = anno[['points']].values
+        for [annotation] in iters:
+            cv2.polylines(img, [np.array(annotation, dtype=np.int32)],True, (255,0,0), 3)
+    return img
 
 def show_images(lang, img_pathes, anno, window, type):
     cols = window.columns(3)
     for idx,[path,annot] in enumerate(img_pathes.values):
         if idx%3 == 0:
             cols = window.columns(3)
-
-        img, tlist, tset = get_image(lang, path, anno[anno['image_id']==path], 0, type)
-
+        img = get_image(lang, path, anno[anno['image_id']==path], 0, type)
         cols[idx%3].image(img)
         cols[idx%3].write(img.shape)
         cols[idx%3].write(path)
@@ -137,6 +130,35 @@ def show_dataframe(img,anno,window,lang,type):
 
     show_images(lang, pages[current_page - 1], anno, con2, type)
 
+def csv_list(output_dir):
+    csv_files = [f for f in os.listdir(output_dir) if f.endswith('.csv')]
+    return csv_files
+
+def reorganize_data(data):
+    # 결과를 저장할 새로운 데이터 구조
+    new_data = {lang: {'images': {}} for lang in language}
+
+    # 기존 데이터에서 file_name 기반으로 분류
+    for file_name, info in data['images'].items():
+        # checker에 있는 특정 문자열에 따라 언어 결정
+        for idx, lang in enumerate(checker):
+            if lang in file_name:
+                language_key = language[idx]
+                new_data[language_key]['images'][file_name] = info
+                break
+        else:
+            # 위에 지정된 언어에 해당하지 않으면 'other'로 분류
+            if 'other' not in new_data:
+                new_data['other'] = {'images': {}}
+            new_data['other']['images'][file_name] = info
+
+    return new_data
+
+@st.cache_data()
+def csv_to_json(file_name):
+    with open(f'./output/{file_name}') as f:
+        data = json.loads(f.read())
+    return json_to_csv(reorganize_data(data))
 
 def main():
     if st.sidebar.button("새로고침"):
@@ -151,6 +173,7 @@ def main():
         # 트레인 데이터 출력
         choose_data = st.sidebar.selectbox("트레인/테스트", ("train", "test"))
         choose_lang = st.sidebar.selectbox("언어 선택", language)
+        st.session_state['show_anno'] = st.sidebar.checkbox("어노테이션 표시", value=True)
 
         if choose_data == "train":
             st.header("트레인 데이터")
@@ -160,10 +183,14 @@ def main():
 
         elif choose_data == "test":
             st.header("테스트 데이터")
-
-            show_dataframe(testd[choose_lang]['images'],testd[choose_lang]['annotations'],st,choose_lang, choose_data)
-
-
+            if not os.path.exists('./output/'):
+                os.makedirs('./output/')
+            csv = csv_list('./output')
+            choose_csv = st.sidebar.selectbox("output.csv적용",("안함",)+tuple(csv))
+            data = testd
+            if choose_csv != "안함":
+                data = csv_to_json(choose_csv)
+            show_dataframe(data[choose_lang]['images'],data[choose_lang]['annotations'],st,choose_lang, choose_data)
 
 def login(password, auth):
     if password in auth:
