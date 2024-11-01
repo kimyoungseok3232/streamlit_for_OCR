@@ -115,7 +115,7 @@ def show_dataframe(img,anno,window,lang,type):
         batch_size = st.selectbox("Page Size", options=[9, 15, 27], key=[lang,window,3])
     with bottom_menu[1]:
         total_pages = (
-            int(len(img) / batch_size) if int(len(img) / batch_size) > 0 else 1
+            len(img) // batch_size+1 if len(img) % batch_size > 0 else len(img) // batch_size
         )
         current_page = st.number_input(
             "Page", min_value=1, max_value=total_pages, step=1
