@@ -214,12 +214,18 @@ def get_cropped_img(choose_lang, path, annodata, anno_num, point, show_point):
     cropped_img = masked_img[y:y+h, x:x+w]
     return cropped_img
 
+def csv_to_backup(csv):
+    if not os.path.exists('./backup/'):
+        os.makedirs('./backup/')
+    os.rename('./output/'+csv,'./backup/'+csv)
+    st.rerun()
+
 
 def main():
     if st.sidebar.button("새로고침"):
         st.rerun()
     # 원본데이터 확인 가능 아웃풋도 확인하도록 할 수 있을 듯?
-    option = st.sidebar.selectbox("데이터 선택",("이미지 데이터","라벨링"))
+    option = st.sidebar.selectbox("데이터 선택",("이미지 데이터","라벨링","backup"))
     
     # 데이터 로드
     testd, traind = load_json_data()
@@ -245,6 +251,8 @@ def main():
             data = testd
             if choose_csv != "안함":
                 data = csv_to_json(choose_csv)
+                if st.sidebar.button("현재 csv 백업 폴더로 이동"):
+                    csv_to_backup(choose_csv)
             if st.sidebar.button("새로운 csv 파일 업로드"):
                 upload_csv(csv)
 
@@ -290,6 +298,28 @@ def main():
             annodata[annodata['image_id']==path].iloc[anno_num-1]['points'][point_num] = traind[choose_lang]['annotations'][annodata['image_id']==path].iloc[anno_num-1]['points'][point_num]
             st.session_state["change_anno"] = annodata
             st.rerun()
+    elif option == "backup":
+        st.header("backup 파일 목록")
+        file_list = os.listdir('./backup/')
+        for file in file_list:
+            file_path = os.path.join('./backup/', file)
+            if os.path.isfile(file_path):
+                file_name, button1, button2 = st.columns([5,1,2])
+                file_name.write(file)
+                if button1.button("삭제", key = f"delete {file}"):
+                    try:
+                        os.remove(file_path)
+                        st.success(f"{file} 파일이 삭제되었습니다.")
+                    except:
+                        st.error("파일 삭제 중 오류가 발생했습니다.")
+                    st.rerun()
+                if button2.button("기존 폴더로 이동", key = f"move {file}"):
+                    try:
+                        os.rename(file_path,'./output/'+file)
+                        st.success(f"{file} 파일이 이동되었습니다.")
+                    except:
+                        st.error("파일 이동 중 오류가 발생했습니다.")
+                    st.rerun()
 
 
 def login(password, auth):
