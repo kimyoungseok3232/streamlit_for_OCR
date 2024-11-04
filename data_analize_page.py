@@ -64,12 +64,21 @@ def split_frame(input_df, rows):
 ## img_pathes = train_data['image_id'] or test_data['image_id'] 데이터프레임
 ## anno = train_data[['bbox','category_id']] 데이터프레임
 ## window = 데이터 출력할 창
-def get_image(lang, image_path, anno, transform, type):
+def get_image(lang, image_path, anno, transform, type, choose_anno = None):
     img = cv2.imread(f'../data/{lang}_receipt/img/{type}/'+image_path)
     if st.session_state['show_anno']:
         iters = anno[['points']].values
-        for [annotation] in iters:
-            cv2.polylines(img, [np.array(annotation, dtype=np.int32)],True, (255,0,0), 3)
+        for idx, [annotation] in enumerate(iters):
+            if choose_anno == idx:
+                cv2.polylines(img, [np.array(annotation, dtype=np.int32)],True, (0,255,0), 3)
+            else:
+                cv2.polylines(img, [np.array(annotation, dtype=np.int32)],True, (255,0,0), 3)
+    elif choose_anno != None:
+        iters = anno[['points']].values
+        for idx, [annotation] in enumerate(iters):
+            if choose_anno == idx:
+                cv2.polylines(img, [np.array(annotation, dtype=np.int32)],True, (0,255,0), 3)
+        
     return img
 
 def show_images(lang, img_pathes, anno, window, type):
@@ -191,11 +200,22 @@ def upload_csv(csv):
         if st.button("close"):
                 st.rerun()
 
+@st.cache_data()
+def get_cropped_img(choose_lang, path, annodata, anno_num):
+    ori_img = cv2.imread(f'../data/{choose_lang}_receipt/img/train/'+path)
+    mask = np.zeros_like(ori_img)
+    cv2.fillPoly(mask, [np.array(annodata[annodata['image_id']==path].iloc[anno_num-1]['points'],dtype=np.int32)], (255,255,255))
+    masked_img = cv2.bitwise_and(ori_img, mask)
+    x,y,w,h = cv2.boundingRect(np.array(annodata[annodata['image_id']==path].iloc[anno_num-1]['points'],dtype=np.int32))
+    cropped_img = masked_img[y:y+h, x:x+w]
+    return cropped_img
+
+
 def main():
     if st.sidebar.button("새로고침"):
         st.rerun()
     # 원본데이터 확인 가능 아웃풋도 확인하도록 할 수 있을 듯?
-    option = st.sidebar.selectbox("데이터 선택",("이미지 데이터"))
+    option = st.sidebar.selectbox("데이터 선택",("이미지 데이터","라벨링"))
     
     # 데이터 로드
     testd, traind = load_json_data()
@@ -225,6 +245,46 @@ def main():
                 upload_csv(csv)
 
             show_dataframe(data[choose_lang]['images'],data[choose_lang]['annotations'],st,choose_lang, choose_data)
+    elif option == "라벨링":
+        choose_lang = st.sidebar.selectbox("언어 선택", language)
+        imgdata = traind[choose_lang]['images']
+        if "change_anno" in st.session_state:
+            annodata = st.session_state["change_anno"]
+        else:
+            annodata = traind[choose_lang]['annotations']
+        image_num = st.sidebar.number_input("이미지 번호", min_value=1, max_value=imgdata.shape[0])
+        path = imgdata.iloc[image_num-1]['file_name']
+        anno_num = st.sidebar.number_input("bbox 번호", min_value=1, max_value=annodata[annodata['image_id']==path].shape[0])
+
+        point_num = st.sidebar.number_input("꼭짓점 번호", min_value=0, max_value=3)
+    
+        st.session_state['show_anno'] = st.sidebar.checkbox("다른 어노테이션 표시", value=True)
+
+        point = annodata[annodata['image_id']==path].iloc[anno_num-1]['points'][point_num]
+
+        img = get_image(choose_lang, path, annodata[annodata['image_id']==path], 0, 'train', anno_num-1)
+        cv2.circle(img, np.array(point,dtype=np.int32), 5, (0,0,255), 3)
+
+        cropped_img = get_cropped_img(choose_lang, path, annodata, anno_num)
+
+        col1,col2 = st.columns(2)
+        col1.image(img)
+        col2.image(cropped_img)
+        col2.write('bbox의 포인트 목록')
+        col2.write(annodata[annodata['image_id']==path].iloc[anno_num-1]['points'])
+        
+        x = col2.number_input("x좌표", value=int(point[0]), step=1)
+        y = col2.number_input("y좌표", value=int(point[1]), step=1)
+
+        if col2.button("좌표 값 변경"):
+            annodata[annodata['image_id']==path].iloc[anno_num-1]['points'][point_num] = [x,y]
+            st.session_state["change_anno"] = annodata
+            st.rerun()
+        if col2.button("초기화"):
+            annodata[annodata['image_id']==path].iloc[anno_num-1]['points'][point_num] = traind[choose_lang]['annotations'][annodata['image_id']==path].iloc[anno_num-1]['points'][point_num]
+            st.session_state["change_anno"] = annodata
+            st.rerun()
+
 
 def login(password, auth):
     if password in auth:
