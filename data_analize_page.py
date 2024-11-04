@@ -201,12 +201,16 @@ def upload_csv(csv):
                 st.rerun()
 
 @st.cache_data()
-def get_cropped_img(choose_lang, path, annodata, anno_num):
+def get_cropped_img(choose_lang, path, annodata, anno_num, point, show_point):
     ori_img = cv2.imread(f'../data/{choose_lang}_receipt/img/train/'+path)
     mask = np.zeros_like(ori_img)
     cv2.fillPoly(mask, [np.array(annodata[annodata['image_id']==path].iloc[anno_num-1]['points'],dtype=np.int32)], (255,255,255))
     masked_img = cv2.bitwise_and(ori_img, mask)
     x,y,w,h = cv2.boundingRect(np.array(annodata[annodata['image_id']==path].iloc[anno_num-1]['points'],dtype=np.int32))
+
+    if show_point:
+        cv2.circle(masked_img, np.array(point,dtype=np.int32), 5, (0,0,255), 3)
+
     cropped_img = masked_img[y:y+h, x:x+w]
     return cropped_img
 
@@ -259,13 +263,15 @@ def main():
         point_num = st.sidebar.number_input("꼭짓점 번호", min_value=0, max_value=3)
     
         st.session_state['show_anno'] = st.sidebar.checkbox("다른 어노테이션 표시", value=True)
+        show_point = st.sidebar.checkbox("꼭짓점 표시", value=True)
 
         point = annodata[annodata['image_id']==path].iloc[anno_num-1]['points'][point_num]
 
         img = get_image(choose_lang, path, annodata[annodata['image_id']==path], 0, 'train', anno_num-1)
-        cv2.circle(img, np.array(point,dtype=np.int32), 5, (0,0,255), 3)
+        if show_point:
+            cv2.circle(img, np.array(point,dtype=np.int32), 5, (0,0,255), 3)
 
-        cropped_img = get_cropped_img(choose_lang, path, annodata, anno_num)
+        cropped_img = get_cropped_img(choose_lang, path, annodata, anno_num, point, show_point)
 
         col1,col2 = st.columns(2)
         col1.image(img)
